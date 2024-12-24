@@ -202,6 +202,9 @@ plt.show()
 
 
 #4.1) Scalogram of the signal
+
+wavelist = pywt.wavelist(kind='continuous') # The built-in CWT can only use limited number of wavelets.
+
 scales = np.geomspace(1, 60, 60)  # change according to verification of scale frequenices
 scale_frequencies = pywt.scale2frequency("morl",scales)*fs  # always verify it to represent accurate frequency resolution
 
@@ -796,7 +799,7 @@ dataset = np.concatenate((filtered_normal, filtered_patient))
 
 def extract_dwt_features(signal):
    
-    dwt = pywt.wavedec(signal, 'db4', level=5)
+    dwt = pywt.wavedec(signal, 'bior5.5', level=5)
     A5, D5, D4, D3, D2, D1 = dwt
     
     
@@ -812,21 +815,26 @@ def extract_dwt_features(signal):
     # Process for each coefficient band (A5, D5, D4, D3, D2)
     for band in [A5, D5, D4, D3, D2]:
         
-        hist, bin_edges = np.histogram(band, bins='auto', density=True)  
-        probabilities = hist / np.sum(hist)
+        
+        avg_integrate = (integrate.simps(np.abs(A5))+integrate.simps(np.abs(D5))+
+                         integrate.simps(np.abs(D4))+integrate.simps(np.abs(D3))+
+                         integrate.simps(np.abs(D2))
+                         )/5
+        
+        freqs, psd = welch(band, fs=128)
+        
 
         features.extend([
-            #skew(band),              
+             
+            (np.sum(freqs * psd) / np.sum(psd))/bandratio[4],
             kurtosis(band),
-            integrate.simps(np.abs(band))
-            #np.corrcoef(band[:-1], band[1:])[0, 1],       # Auto-correlation   
-            #np.sum(band[:-1] * band[1:] < 0) /len(band),  # Zero-crossing rate
-            #entropy(probabilities, base=2)                # Shannon entropy
+            (freqs[np.cumsum(psd) >= 0.5 * np.sum(psd)][0])/bandratio[4],
+            integrate.simps(np.abs(band))/avg_integrate
+            
+
         ])
         
     features.extend([
-        #entropy(energies / total, base=2),   # Entropy of the wavelet energies
-        #np.mean(D2)/np.mean(D5),             # Gamma-Theta ratio by means
         bandratio[0],                        # Band energy ratios
         bandratio[1],
         bandratio[2],
@@ -846,6 +854,7 @@ plt.figure(figsize=(10,10))
 plt.ylabel("Feature Values")
 plt.xlabel("Feature Number")
 plt.title("Feature Vector")
+plt.ylim(-1, 16)
 plt.plot(example1)
 plt.show()
 
@@ -853,6 +862,7 @@ plt.figure(figsize=(10,10))
 plt.ylabel("Feature Values")
 plt.xlabel("Feature Number")
 plt.title("Feature Vector")
+plt.ylim(-1, 16)
 plt.plot(example2)
 plt.show()
 
@@ -862,7 +872,7 @@ plt.show()
 #2) Apply the transformation to whole data
 
 
-dwt_data = np.zeros((84, 16, 15)) # consider the size of the feature vector 
+dwt_data = np.zeros((84, 16, 25)) # consider the size of the feature vector 
 
 
 
@@ -878,6 +888,8 @@ for ii in range(84):
 #%% 8) Model training
 
 
+
+
 from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import minmax_scale , StandardScaler
@@ -886,8 +898,8 @@ from sklearn.model_selection import GridSearchCV
 
 
 
-# Matrices are flattened to a 1D vector of size 592
-x = dwt_data.reshape(84, -1)  # Reshape to (84, 592)
+# Matrices are flattened to a 1D vector 
+x = dwt_data.reshape(84, -1)  
 
 
 y = np.array([0] * 39 + [1] * 45)  # Binary labels
@@ -897,12 +909,6 @@ x_train, x_test, y_train, y_test = train_test_split(x, y,test_size=0.3 , random_
 
 
 
-"""
-scale = StandardScaler()
-scale.fit(x_train) # Adapting to just training set
-x_train = scale.transform(x_train) # Transform
-x_test = scale.transform(x_test) 
-"""
 
 
 mymodel = svm.SVC(probability=True) # Classifier model
@@ -920,14 +926,16 @@ It also uses Cross-Validation. And parameter grid need to be defined.
 
 # Define the parameter grid
 param_grid = {
-    'C': [0.001, 0.01, 0.05, 0.1, 0.2, 0.6, 1, 8, 9, 10, 11, 12, 13],
-    'kernel': ['linear', 'rbf' , 'sigmoid' ],
-    'gamma': ['scale', 'auto',  0.01, 0.1, 0.25, 0.3, 0.33, 0.4, 0.5, 0.7,  1, 2, 10 , 15]
-    
-    }
+    'C': [8.35, 8.4, 8.445, 8.45, 8.455, 8.5, 8.55, 8.6, 8.65, 8.68, 8.7, 8.72, 8.75, 8.8, 8.9, 8.95, 9, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.65, 9.7, 9.73, 9.75, 9.77],
+    'kernel': ['linear', 'rbf', 'sigmoid'],
+    'gamma': ['scale', 'auto'],
+    'coef0': [0.0, 0.1, 0.5, 1.0],  # for polynomial and sigmoid kernels
+    'shrinking': [True, False],
+
+}
 
 
-grid_search = GridSearchCV(mymodel, param_grid, cv=3, n_jobs=-1, verbose=0)
+grid_search = GridSearchCV(mymodel, param_grid, cv=3, n_jobs=-1, verbose=0, scoring='accuracy')
 # Setting n_jobs to -1 means that the algorithm will use all available CPU cores on your machine
 # Verbose setting is for observing the details of the ongoing process 
 
@@ -977,5 +985,133 @@ for param, value in grid_search.best_params_.items():
 
 
 
-#%% 8) Extra methods: Image classification by CWT and STFT
+
+#%% 9) MLP model
+
+
+import keras 
+from keras.models import Sequential
+from keras.layers import Dense,Dropout 
+from keras.optimizers import RMSprop
+from keras.utils import to_categorical
+from keras.regularizers import l1, l2
+from keras.optimizers import RMSprop, Adam, SGD, Adagrad, Adadelta, Adamax
+from keras.initializers import glorot_uniform, he_normal
+from keras.callbacks import EarlyStopping
+
+
+
+x = dwt_data.reshape(84, -1)  # flattening
+
+
+# One-hot encoding for multi-class classification
+label1= np.zeros((39,1))
+label2= np.ones((45,1))
+
+labels = np.vstack((label1,label2))
+onehot= to_categorical(labels,2)
+
+x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.3 , random_state=42)
+
+
+
+
+optimizer = Adam(learning_rate=0.0001, beta_1=0.95, beta_2=0.9) # Learning Rate
+
+early_stop= EarlyStopping(monitor='val_accuracy', patience=25, restore_best_weights=True)
+
+
+# Model 
+model6 = Sequential()
+model6.add(Dense(90, activation='silu', input_dim=400))  # Initializer
+model6.add(Dropout(0.2))
+model6.add(Dense(90,activation="silu", kernel_regularizer=l2(0.005)))
+model6.add(Dropout(0.2))
+model6.add(Dense(45,activation="silu", kernel_regularizer=l2(0.005)))
+model6.add(Dense(2,activation="softmax")) 
+model6.compile(optimizer=optimizer,loss="binary_crossentropy", metrics=["accuracy"])  
+history=model6.fit(x_train, y_train, validation_data=(x_test,y_test),epochs=120,batch_size=5, callbacks=[early_stop])
+
+predictions= model6.predict(x_test)  
+model6.summary()                           
+
+
+
+
+
+# The confusion matrix
+Predictions=np.argmax(predictions, axis=1)
+Y_test=np.argmax(y_test, axis=1)
+cm = confusion_matrix(Y_test, Predictions)
+print(cm)    
+    
+
+fig6=plt.figure()
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues') 
+plt.xlabel('Predicted label')
+plt.ylabel('True label') 
+plt.title('Confusion  matrix') 
+plt.show()   
+
+
+# Change of accuracy by epochs
+plt.figure(figsize=(8,6))
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend(['train', 'test'], loc='upper left')
+plt.show()
+
+
+
+
+#%% Save and reuse the best model
+
+#model6.save('mlp_model.h5')
+
+
+from keras.models import load_model
+
+model = load_model('mlp_model.h5')
+
+
+newpredictions = model.predict(x_test) # Make predictions
+
+
+newpredictions = np.argmax(newpredictions, axis=1)
+
+
+
+
+s1 = accuracy_score(Y_test, newpredictions)
+s2 = f1_score(Y_test, newpredictions, average='weighted')
+s3 = recall_score(Y_test, newpredictions, average='weighted')
+s4 = precision_score(Y_test, newpredictions)
+
+print(f"Accuracy: {s1*100:.2f}%")
+print(f"F1 Score: {s2*100:.2f}%")
+print(f"Recall: {s3*100:.2f}%")
+print(f"Precision: {s4*100:.2f}%")
+
+
+# Confusion matrix
+cm = confusion_matrix(Y_test, newpredictions)
+print("Confusion Matrix:")
+print(cm)
+
+
+plt.figure(figsize=(8,6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')  # Heatmap of confusion matrix
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix')
+plt.show()
+
+
+#%% 10) Extra methods: Image classification by CWT and STFT
+
+
 
