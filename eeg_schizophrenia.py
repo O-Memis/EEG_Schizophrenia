@@ -711,7 +711,7 @@ plt.show()
 
 
 
-A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal2, 'db4', level=5)  # Perform wavelet decomposition (db4 wavelet, 5 levels)
+A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal2, 'bior3.3', level=5)  # Perform wavelet decomposition (db4 wavelet, 5 levels)
 
 
 """
@@ -885,7 +885,7 @@ for ii in range(84):
 
 
 
-#%% 8) Model training
+#%% 8) SVM with CV and Grid Search
 
 
 
@@ -905,9 +905,8 @@ x = dwt_data.reshape(84, -1)
 y = np.array([0] * 39 + [1] * 45)  # Binary labels
 
 
-x_train, x_test, y_train, y_test = train_test_split(x, y,test_size=0.3 , random_state=42)
 
-
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42, stratify=y)
 
 
 
@@ -926,16 +925,16 @@ It also uses Cross-Validation. And parameter grid need to be defined.
 
 # Define the parameter grid
 param_grid = {
-    'C': [8.35, 8.4, 8.445, 8.45, 8.455, 8.5, 8.55, 8.6, 8.65, 8.68, 8.7, 8.72, 8.75, 8.8, 8.9, 8.95, 9, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.65, 9.7, 9.73, 9.75, 9.77],
-    'kernel': ['linear', 'rbf', 'sigmoid'],
+    'C': [5,5.2,5.4,5.6,5.8, 6,6.2, 6.4 ,6.6, 6.8, 7, 7.2, 7.4, 7.6, 7.8, 8,9,10,11,12,12.1,12,12,12.125, 12.13],
+    'kernel': ['linear', 'rbf', 'sigmoid', 'poly'],
     'gamma': ['scale', 'auto'],
-    'coef0': [0.0, 0.1, 0.5, 1.0],  # for polynomial and sigmoid kernels
+    'coef0': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,0.8,0.9, 1.0],  # for polynomial and sigmoid kernel
     'shrinking': [True, False],
 
 }
 
 
-grid_search = GridSearchCV(mymodel, param_grid, cv=3, n_jobs=-1, verbose=0, scoring='accuracy')
+grid_search = GridSearchCV(mymodel, param_grid, cv=5, n_jobs=-1, verbose=0, scoring='accuracy')
 # Setting n_jobs to -1 means that the algorithm will use all available CPU cores on your machine
 # Verbose setting is for observing the details of the ongoing process 
 
@@ -949,40 +948,72 @@ best_model = grid_search.best_estimator_
 
 
 
-# Calculate the metrics for classification 
+# 1- Calculate k-fold CV metrics with train data-------------------------------
 
-predictions = best_model.predict(x_test) # Make predictions
-
-s1 = accuracy_score(y_test, predictions)
-s2 = f1_score(y_test, predictions, average='weighted')
-s3 = recall_score(y_test, predictions, average='weighted')
-s4 = precision_score(y_test, predictions)
-
-print(f"Accuracy: {s1*100:.2f}%")
-print(f"F1 Score: {s2*100:.2f}%")
-print(f"Recall: {s3*100:.2f}%")
-print(f"Precision: {s4*100:.2f}%")
+print("\nDetailed results for best parameters:")
+print(f"Mean CV Score: {grid_search.cv_results_['mean_test_score'][grid_search.best_index_] * 100:.2f}%")
+print(f"Standard Deviation: {grid_search.cv_results_['std_test_score'][grid_search.best_index_] * 100:.2f}%")
 
 
-# Confusion matrix
-cm = confusion_matrix(y_test, predictions)
-print("Confusion Matrix:")
-print(cm)
 
 
-plt.figure(figsize=(8,6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')  # Heatmap of confusion matrix
+# 2- Calculate the metrics for test data---------------------------------------
+print("\nTest Data Metrics")
+test_predictions = best_model.predict(x_test)
+
+s12 = accuracy_score(y_test, test_predictions)  
+s22 = f1_score(y_test, test_predictions, average='weighted')
+s32 = recall_score(y_test, test_predictions, average='weighted')
+s42 = precision_score(y_test, test_predictions, average='weighted')  
+
+print(f"Test Accuracy: {s12 * 100:.2f}%")  
+print(f"Test F1 Score: {s22 * 100:.2f}%")
+print(f"Test Recall: {s32 * 100:.2f}%")
+print(f"Test Precision: {s42 * 100:.2f}%")
+
+cm_test = confusion_matrix(y_test, test_predictions)  
+print("\nConfusion Matrix (Unseen Data):")
+print(cm_test)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues')
 plt.xlabel('Predicted label')
 plt.ylabel('True label')
-plt.title('Confusion Matrix')
+plt.title('Confusion Matrix - Test Data')
 plt.show()
 
 
+# 3- Calculate the metrics for all---------------------------------------------
+print("\n All Data Metrics")
+all_predictions = best_model.predict(x)
+
+s111 = accuracy_score(y, all_predictions)  
+s222 = f1_score(y, all_predictions, average='weighted')
+s333 = recall_score(y, all_predictions, average='weighted')
+s444 = precision_score(y, all_predictions, average='weighted')  
+print(f"Test Accuracy: {s111 * 100:.2f}%")  
+print(f"Test F1 Score: {s222 * 100:.2f}%")
+print(f"Test Recall: {s333 * 100:.2f}%")
+print(f"Test Precision: {s444 * 100:.2f}%")
+
+
+cm_all = confusion_matrix(y, all_predictions)  
+print("\nConfusion Matrix (Whole Data):")
+print(cm_all)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_all, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - All Data')
+plt.show()
+
+
+
 # Print the best model parameters
-print("Best parameters:")
+print("\nBest parameters:")
 for param, value in grid_search.best_params_.items():
     print(f"{param}: {value}")
-
 
 
 
@@ -1011,14 +1042,14 @@ label2= np.ones((45,1))
 labels = np.vstack((label1,label2))
 onehot= to_categorical(labels,2)
 
-x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.3 , random_state=42)
+x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.3 , random_state=42, stratify=onehot)
 
 
 
 
-optimizer = Adam(learning_rate=0.0001, beta_1=0.95, beta_2=0.9) # Learning Rate
+optimizer = Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.9) # Learning Rate
 
-early_stop= EarlyStopping(monitor='val_accuracy', patience=25, restore_best_weights=True)
+early_stop= EarlyStopping(monitor='val_accuracy', patience=100, restore_best_weights=True)
 
 
 # Model 
@@ -1038,7 +1069,6 @@ model6.summary()
 
 
 
-
 # The confusion matrix
 Predictions=np.argmax(predictions, axis=1)
 Y_test=np.argmax(y_test, axis=1)
@@ -1051,7 +1081,7 @@ plt.figure(figsize=(8,6))
 sns.heatmap(cm, annot=True, fmt='d', cmap='Blues') 
 plt.xlabel('Predicted label')
 plt.ylabel('True label') 
-plt.title('Confusion  matrix') 
+plt.title('Confusion  Matrix - Test Data') 
 plt.show()   
 
 
@@ -1068,7 +1098,7 @@ plt.show()
 
 
 
-#%% Save and reuse the best model
+#%% 9) Optional: Save and reuse the best model
 
 #model6.save('mlp_model.h5')
 
@@ -1078,40 +1108,118 @@ from keras.models import load_model
 model = load_model('mlp_model.h5')
 
 
-newpredictions = model.predict(x_test) # Make predictions
-
-
+newpredictions = model.predict(x) # Make predictions
 newpredictions = np.argmax(newpredictions, axis=1)
 
+all_labels = np.argmax(onehot, axis=1)
 
 
+s13 = accuracy_score(all_labels, newpredictions)
+s23 = f1_score(all_labels, newpredictions, average='weighted')
+s33 = recall_score(all_labels, newpredictions, average='weighted')
+s43 = precision_score(all_labels, newpredictions)
 
-s1 = accuracy_score(Y_test, newpredictions)
-s2 = f1_score(Y_test, newpredictions, average='weighted')
-s3 = recall_score(Y_test, newpredictions, average='weighted')
-s4 = precision_score(Y_test, newpredictions)
-
-print(f"Accuracy: {s1*100:.2f}%")
-print(f"F1 Score: {s2*100:.2f}%")
-print(f"Recall: {s3*100:.2f}%")
-print(f"Precision: {s4*100:.2f}%")
+print(f"Accuracy: {s13*100:.2f}%")
+print(f"F1 Score: {s23*100:.2f}%")
+print(f"Recall: {s33*100:.2f}%")
+print(f"Precision: {s43*100:.2f}%")
 
 
 # Confusion matrix
-cm = confusion_matrix(Y_test, newpredictions)
+cm = confusion_matrix(all_labels, newpredictions)
 print("Confusion Matrix:")
 print(cm)
 
 
 plt.figure(figsize=(8,6))
-sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')  # Heatmap of confusion matrix
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')  
 plt.xlabel('Predicted label')
 plt.ylabel('True label')
-plt.title('Confusion Matrix')
+plt.title('Confusion Matrix - All Data')
 plt.show()
 
 
-#%% 10) Extra methods: Image classification by CWT and STFT
+#%% 10) Leave One Out CV 
 
+
+
+
+
+from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import train_test_split
+
+
+
+# Assuming dwt_data is already defined somewhere in your code
+x = dwt_data.reshape(84, -1)  # flattening
+
+# One-hot encoding for multi-class classification
+label1 = np.zeros((39, 1))
+label2 = np.ones((45, 1))
+labels = np.vstack((label1, label2))
+onehot = to_categorical(labels, 2)
+
+# LOOCV procedure
+loo = LeaveOneOut()
+accuracies = []
+all_predictions = []
+all_true_labels = []
+
+for train_ix, test_ix in loo.split(x):
+    x_train, x_test = x[train_ix], x[test_ix]
+    y_train, y_test = onehot[train_ix], onehot[test_ix]
+
+    optimizer = Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.9)  # Learning Rate
+    early_stop = EarlyStopping(monitor='val_accuracy', patience=100, restore_best_weights=True)
+
+    # Model
+    model = Sequential()
+    model.add(Dense(90, activation='silu', input_dim=400))
+    model.add(Dropout(0.2))
+    model.add(Dense(90, activation="silu", kernel_regularizer=l2(0.005)))
+    model.add(Dropout(0.2))
+    model.add(Dense(45, activation="silu", kernel_regularizer=l2(0.005)))
+    model.add(Dense(2, activation="softmax"))
+    model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
+    history = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=120, batch_size=5, callbacks=[early_stop], verbose=0)
+
+    predictions = model.predict(x_test)
+    Predictions = np.argmax(predictions, axis=1)
+    Y_test = np.argmax(y_test, axis=1)
+    acc = accuracy_score(Y_test, Predictions)
+    accuracies.append(acc)
+    
+    all_predictions.extend(Predictions)
+    all_true_labels.extend(Y_test)
+
+# Report the mean and standard deviation of the accuracy
+mean_accuracy = np.mean(accuracies)
+std_accuracy = np.std(accuracies)
+print(f'LOOCV Accuracy: {mean_accuracy:.3f} ({std_accuracy:.3f})')
+
+# Plot the confusion matrix for all predictions
+cm = confusion_matrix(all_true_labels, all_predictions)
+fig6 = plt.figure()
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - LOOCV')
+plt.show()
+
+
+
+s41 = accuracy_score(all_true_labels, all_predictions)  
+s42 = f1_score(all_true_labels, all_predictions, average='weighted')
+s43 = recall_score(all_true_labels, all_predictions, average='weighted')
+s44 = precision_score(all_true_labels, all_predictions, average='weighted')  
+
+print(f"Total LOOCV Accuracy: {s41 * 100:.2f}%")  
+print(f"Total LOOCV  F1 Score: {s42 * 100:.2f}%")
+print(f"Total LOOCV  Recall: {s43 * 100:.2f}%")
+print(f"Total LOOCV  Precision: {s44 * 100:.2f}%")
+
+
+#%% 11) Extra methods: Image classification by CWT and STFT
 
 
