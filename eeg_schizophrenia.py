@@ -608,7 +608,8 @@ plt.show()
 
 
 
-#%% 5) Connectivity maps and plots
+#%% 5) EDA: Connectivity maps and plots
+
 
 import seaborn as sns
 from scipy.spatial.distance import pdist, squareform
@@ -1120,7 +1121,7 @@ plt.show()
 
 
 
-#%% 7.4) MLP model iterations
+#%% 7.4) DWT-MLP model iterations
 
 
 import keras 
@@ -1145,27 +1146,27 @@ label2= np.ones((45,1))
 labels = np.vstack((label1,label2))
 onehot= to_categorical(labels,2)
 
-x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.3 , random_state=42, stratify=onehot)
+x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.20 , random_state=42, stratify=onehot)
 
 
 
 
-optimizer = SGD(learning_rate=0.0008, momentum=0.4)
+optimizer = RMSprop(learning_rate=0.001, rho=0.05, epsilon=1e-06)
 
-early_stop= EarlyStopping(monitor='val_accuracy', patience=150, restore_best_weights=True)
+early_stop= EarlyStopping(monitor='val_accuracy', patience=200, restore_best_weights=True)
 
 act = "silu"
 
 # Model 
 model6 = Sequential()
-model6.add(Dense(200, activation=act, input_dim=400)) 
-model6.add(Dropout(0.3))
-model6.add(Dense(200, activation=act, kernel_regularizer=l2(0.003)))
+model6.add(Dense(200, activation=act, kernel_regularizer=l2(0.0005), input_dim=400)) 
+model6.add(Dropout(0.1))
+model6.add(Dense(250, activation=act, kernel_regularizer=l2(0.002)))
 model6.add(Dropout(0.2))
-model6.add(Dense(50, activation=act, kernel_regularizer=l2(0.002)))
+model6.add(Dense(70, activation=act, kernel_regularizer=l2(0.0002)))
 model6.add(Dense(2,activation="softmax")) 
-model6.compile(optimizer=optimizer,loss="binary_crossentropy", metrics=["accuracy"])  
-history=model6.fit(x_train, y_train, validation_data=(x_test,y_test),epochs=220,batch_size=5, callbacks=[early_stop])
+model6.compile(optimizer=optimizer,loss="categorical_crossentropy", metrics=["accuracy"])  
+history=model6.fit(x_train, y_train, validation_data=(x_test,y_test),epochs=250,batch_size=5, callbacks=[early_stop])
 
 predictions= model6.predict(x_test)  
 model6.summary()                           
@@ -1215,12 +1216,12 @@ plt.show()
 
 #%%  Optional: Save and reuse the best model
 
-#model6.save('mlp_model.h5')
+#model6.save('dwt_mlp_model_96.h5')
 
 
 from keras.models import load_model
 
-model = load_model('mlp_model.h5')
+model = load_model('dwt_mlp_model_96.h5')
 
 
 newpredictions = model.predict(x) # Make predictions
@@ -1283,26 +1284,28 @@ labels = np.vstack((label1, label2))
 onehot = to_categorical(labels, 2) 
 
 # 1-Initial train-test split
-x_train, x_test, y_train, y_test = train_test_split(x, onehot, test_size=0.3, random_state=42, stratify=onehot)
+x_train, x_test, y_train, y_test = train_test_split(x, onehot, test_size=0.2, random_state=42, stratify=onehot)
 
 
 
-# 2-Custom function to generate the model where it is needed
+# 2-Custom function to generate the model where it is needed. The most consistent model parameters are below.
 def make_model():
+    act = "silu"
     model = Sequential()
-    model.add(Dense(150, activation='silu', input_dim=400))
-    model.add(Dropout(0.3))
-    model.add(Dense(150, activation="silu", kernel_regularizer=l2(0.002)))
+    model.add(Dense(200, activation=act, kernel_regularizer=l2(0.0005), input_dim=400)) 
+    model.add(Dropout(0.1))
+    model.add(Dense(250, activation=act, kernel_regularizer=l2(0.002)))
     model.add(Dropout(0.2))
-    model.add(Dense(50, activation="silu", kernel_regularizer=l2(0.002)))
-    model.add(Dense(2, activation="softmax"))
-    optimizer = RMSprop(learning_rate=0.0005, rho=0.8, epsilon=1e-08)
-    model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy"])
+    model.add(Dense(70, activation=act, kernel_regularizer=l2(0.0002)))
+    model.add(Dense(2,activation="softmax")) 
+    optimizer = RMSprop(learning_rate=0.001, rho=0.05, epsilon=1e-06)
+    model.compile(optimizer=optimizer,loss="categorical_crossentropy", metrics=["accuracy"])  
+
     return model
 
 # 3-Definitions for K-Fold Cross-Validation
 
-k = 5  # Number of folds
+k = 10  # Number of folds
 kf = KFold(n_splits=k, shuffle=False)
 
 fold_number = 1  # iteration
@@ -1316,11 +1319,11 @@ for train_index, val_index in kf.split(x_train):
     x_fold_train, x_fold_val = x_train[train_index], x_train[val_index]
     y_fold_train, y_fold_val = y_train[train_index], y_train[val_index]
 
-    early_stop = EarlyStopping(monitor='val_accuracy', patience=150, restore_best_weights=True)
+    early_stop = EarlyStopping(monitor='val_accuracy', patience=200, restore_best_weights=True)
 
     
     model = make_model()
-    history = model.fit(x_fold_train, y_fold_train, validation_data=(x_fold_val, y_fold_val), epochs=200, batch_size=5, callbacks=[early_stop], verbose=0)
+    history = model.fit(x_fold_train, y_fold_train, validation_data=(x_fold_val, y_fold_val), epochs=250, batch_size=5, callbacks=[early_stop], verbose=0)
 
     predictions = model.predict(x_fold_val)
     Predictions = np.argmax(predictions, axis=1)
@@ -1348,7 +1351,7 @@ plt.figure(figsize=(8, 6))
 sns.heatmap(cm_cv, annot=True, fmt='d', cmap='Blues')
 plt.xlabel('Predicted label')
 plt.ylabel('True label')
-plt.title('Confusion Matrix - Cross-Validation')
+plt.title('Confusion Matrix - Cross-Validation on Training')
 plt.show()
 
 
@@ -1434,19 +1437,12 @@ for train_ix, test_ix in loo.split(x):
     x_train, x_test = x[train_ix], x[test_ix]
     y_train, y_test = onehot[train_ix], onehot[test_ix]
 
-    optimizer = Adam(learning_rate=0.0001, beta_1=0.9, beta_2=0.9)  # Learning Rate
-    early_stop = EarlyStopping(monitor='val_accuracy', patience=100, restore_best_weights=True)
-
-    # Model
-    model = Sequential()
-    model.add(Dense(90, activation='silu', input_dim=400))
-    model.add(Dropout(0.2))
-    model.add(Dense(90, activation="silu", kernel_regularizer=l2(0.005)))
-    model.add(Dropout(0.2))
-    model.add(Dense(45, activation="silu", kernel_regularizer=l2(0.005)))
-    model.add(Dense(2, activation="softmax"))
-    model.compile(optimizer=optimizer, loss="binary_crossentropy", metrics=["accuracy"])
-    history = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=120, batch_size=5, callbacks=[early_stop], verbose=0)
+    
+    # Model   
+    early_stop = EarlyStopping(monitor='val_accuracy', patience=200, restore_best_weights=True)
+    model = make_model()
+    
+    history = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=250, batch_size=5, callbacks=[early_stop], verbose=0)
 
     predictions = model.predict(x_test)
     Predictions = np.argmax(predictions, axis=1)
@@ -1552,7 +1548,7 @@ for iii in range(84):
         stft_data1[iii, jjj, :] = eeg_stft_extraction(dataset[iii, jjj, :])
 
 
-#%% 8.2) MLP
+#%% 8.2) STFT-MLP
 
 
 
@@ -1648,7 +1644,7 @@ plt.legend(['train', 'test'], loc='upper left')
 plt.show()
 
 
-#%% 8.3) SVM 
+#%% 8.3) STFT-SVM 
 
 
 
