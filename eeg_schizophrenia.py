@@ -608,7 +608,7 @@ plt.show()
 
 
 
-#%% 5) EDA: Connectivity maps and plots
+#%% 5) EDA: Connectivity related plots
 
 
 import seaborn as sns
@@ -616,7 +616,7 @@ from scipy.spatial.distance import pdist, squareform
 
 
 
-# 1) Correlation matrix between the channels, for every individual
+# 1) Correlation matrix between the channels, for a specific individual
 
 eeg1 = filtered_normal[30,:,:] # 31th healthy person channels
 eeg2 = filtered_patient[39,:,:] # 40th patient channels
@@ -712,7 +712,7 @@ plt.show()
 
 
 
-A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal2, 'bior3.3', level=5)  # Perform wavelet decomposition (db4 wavelet, 5 levels)
+A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal2, 'db19', level=5)  # Perform wavelet decomposition
 
 
 """
@@ -973,31 +973,10 @@ plt.title('Confusion Matrix - Test Data')
 plt.show()
 
 
-# Calculate the metrics for all---------------------------------------------
-print("\n All Data Metrics")
-all_predictions = best_model.predict(x)
-
-s111 = accuracy_score(y, all_predictions)  
-s222 = f1_score(y, all_predictions, average='weighted')
-s333 = recall_score(y, all_predictions, average='weighted')
-s444 = precision_score(y, all_predictions, average='weighted')  
-print(f"All Accuracy: {s111 * 100:.2f}%")  
-print(f"All F1 Score: {s222 * 100:.2f}%")
-print(f"All Recall: {s333 * 100:.2f}%")
-print(f"All Precision: {s444 * 100:.2f}%")
 
 
-cm_all = confusion_matrix(y, all_predictions)  
-print("\nConfusion Matrix (Whole Data):")
-print(cm_all)
-
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm_all, annot=True, fmt='d', cmap='Blues')
-plt.xlabel('Predicted label')
-plt.ylabel('True label')
-plt.title('Confusion Matrix - All Data')
-plt.show()
-
+print(f"Mean CV Score: {grid_search.cv_results_['mean_test_score'][grid_search.best_index_] * 100:.2f}%")
+print(f"Standard Deviation: {grid_search.cv_results_['std_test_score'][grid_search.best_index_] * 100:.2f}%")
 
 
 # Print the best model parameters
@@ -1151,7 +1130,7 @@ x_train, x_test, y_train, y_test = train_test_split(x, onehot,test_size=0.20 , r
 
 
 
-optimizer = RMSprop(learning_rate=0.001, rho=0.05, epsilon=1e-06)
+optimizer = RMSprop(learning_rate=0.001, rho=0.5, epsilon=1e-06)
 
 early_stop= EarlyStopping(monitor='val_accuracy', patience=200, restore_best_weights=True)
 
@@ -1298,7 +1277,7 @@ def make_model():
     model.add(Dropout(0.2))
     model.add(Dense(70, activation=act, kernel_regularizer=l2(0.0002)))
     model.add(Dense(2,activation="softmax")) 
-    optimizer = RMSprop(learning_rate=0.001, rho=0.05, epsilon=1e-06)
+    optimizer = RMSprop(learning_rate=0.001, rho=0.5, epsilon=1e-06)
     model.compile(optimizer=optimizer,loss="categorical_crossentropy", metrics=["accuracy"])  
 
     return model
@@ -1484,7 +1463,8 @@ print(f"Total LOOCV  Precision: {s44 * 100:.2f}%")
 
 #%% 8.1) STFT - FE Method
 
-# In this method, the Spectrogram of the signal (result of STFT) will be given into MLP input
+
+# In this method, the Spectrogram of the signal (result of STFT) will be given as input feature vector
 
 
 # Slightly lower resolution of STFT 
@@ -1554,7 +1534,7 @@ for iii in range(84):
 
 import keras 
 from keras.models import Sequential
-from keras.layers import Dense,Dropout ,BatchNormalization
+from keras.layers import Dense,Dropout ,BatchNormalization, LeakyReLU 
 from keras.optimizers import RMSprop
 from keras.utils import to_categorical
 from keras.regularizers import l1, l2
@@ -1574,7 +1554,7 @@ label2= np.ones((45,1))
 labels2 = np.vstack((label1,label2))
 onehot2= to_categorical(labels,2)
 
-x_train, x_test, y_train, y_test = train_test_split(x2, onehot2,test_size=0.3 , random_state=42, stratify=onehot2)
+x_train, x_test, y_train, y_test = train_test_split(x2, onehot2,test_size=0.2 , random_state=42, stratify=onehot2)
 
 
 # Standard Normalization
@@ -1584,21 +1564,23 @@ x_train = scale.transform(x_train) # Transform
 x_test = scale.transform(x_test) 
 
 
-myactivation = "silu"
+myactivation = LeakyReLU(alpha=1)
 early_stop= EarlyStopping(monitor='val_accuracy', patience=150, restore_best_weights=True)
-optimizer = Adam(learning_rate=0.01)
+optimizer = RMSprop(learning_rate=0.00005, rho=0.01, epsilon=1e-05)
 
 
 # Model 
 model6 = Sequential()
-model6.add(Dense(150, activation= myactivation, input_dim=5200))
-model6.add(Dropout(0.5))
-model6.add(Dense(30, activation=myactivation, kernel_regularizer=l2(0.05)))
-model6.add(Dropout(0.5))
-model6.add(Dense(10, activation=myactivation, kernel_regularizer=l2(0.01)))
+model6.add(Dense(150, activation= myactivation, kernel_regularizer=l2(0.001), input_dim=5200))
+model6.add(BatchNormalization())
+model6.add(Dropout(0.2))
+model6.add(Dense(30, activation=myactivation, kernel_regularizer=l2(0.1)))
+model6.add(BatchNormalization())
+model6.add(Dropout(0.3))
+model6.add(Dense(10, activation=myactivation, kernel_regularizer=l2(0.001)))
 model6.add(Dense(2,activation="softmax")) 
 model6.compile(optimizer=optimizer ,loss="categorical_crossentropy", metrics=["accuracy"])  
-history=model6.fit(x_train, y_train, validation_data=(x_test,y_test),epochs=200,batch_size=5, callbacks=[early_stop])
+history=model6.fit(x_train, y_train, validation_data=(x_test,y_test),epochs=200,batch_size=10, callbacks=[early_stop])
 
 predictions= model6.predict(x_test)  
 model6.summary()                            
@@ -1665,9 +1647,16 @@ y = np.array([0] * 39 + [1] * 45)  # Binary labels
 
 
 
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42, stratify=y)
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42, stratify=y)
 
 
+"""
+# Standard Normalization
+scale = StandardScaler()
+scale.fit(x_train) # Adapting to just training set
+x_train = scale.transform(x_train) # Transform
+x_test = scale.transform(x_test) 
+"""
 
 
 mymodel = svm.SVC(probability=True) # Classifier model
@@ -1676,7 +1665,7 @@ mymodel = svm.SVC(probability=True) # Classifier model
 
 # Define the parameter grid
 param_grid = {
-    'C': [0.01,0.1,1,2,3,4,5,6,7,8,9,10,15,20,25,30,40,50,100,150,200,300,500],
+    'C': [0.01,0.1,1,2,3,4,5,6,7,8,9,10,15,20,25,30,40,50,100,200],
     'kernel': ['linear', 'rbf', 'sigmoid', 'poly'],
     'gamma': ['scale', 'auto'],
     'coef0': [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,0.8,0.9, 1.0],  # for polynomial and sigmoid kernel
@@ -1767,9 +1756,1046 @@ for param, value in grid_search.best_params_.items():
     print(f"{param}: {value}")
 
 
-  
+#%% 8.4) STFT-LogR
+
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.preprocessing import minmax_scale , StandardScaler
+from sklearn.metrics import accuracy_score , f1_score , recall_score, precision_score , confusion_matrix
+from sklearn.model_selection import GridSearchCV
 
 
-#%% Extra methods: pretrained FE and CNNs
 
+# Matrices are flattened to a 1D vector 
+x = stft_data1.reshape(84, -1)  
+
+
+y = np.array([0] * 39 + [1] * 45)  # Binary labels
+
+
+
+x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42, stratify=y)
+
+
+"""
+# Standard Normalization
+scale = StandardScaler()
+scale.fit(x_train) # Adapting to just training set
+x_train = scale.transform(x_train) # Transform
+x_test = scale.transform(x_test) 
+"""
+
+
+mymodel = LogisticRegressionCV()
+
+
+
+# Define the parameter grid
+param_grid = {
+    'solver': ['newton-cg'],
+    'penalty': ['l2'],
+    'multi_class': ['ovr', 'multinomial'],
+    'Cs': [0.1,1, 5, 10, 50, 100 ],
+    'max_iter': [80, 100, 200, 500, 1000],
+    'class_weight': [None, 'balanced'],
+    'tol': [1e-4, 1e-3, 1e-5],
+}
+
+
+grid_search = GridSearchCV(mymodel, param_grid, cv=5, n_jobs=-1, verbose=0, scoring='accuracy')
+# Setting n_jobs to -1 means that the algorithm will use all available CPU cores on your machine
+# Verbose setting is for observing the details of the ongoing process 
+
+grid_search.fit(x_train, y_train)
+
+
+
+# Getting the best model
+best_model = grid_search.best_estimator_
+
+
+
+
+# 1- Calculate k-fold CV metrics with train data-------------------------------
+
+print("\nDetailed results for best parameters:")
+print(f"Mean CV Score: {grid_search.cv_results_['mean_test_score'][grid_search.best_index_] * 100:.2f}%")
+print(f"Standard Deviation: {grid_search.cv_results_['std_test_score'][grid_search.best_index_] * 100:.2f}%")
+
+
+
+
+# 2- Calculate the metrics for test data---------------------------------------
+print("\nTest Data Metrics")
+test_predictions = best_model.predict(x_test)
+
+s12 = accuracy_score(y_test, test_predictions)  
+s22 = f1_score(y_test, test_predictions, average='weighted')
+s32 = recall_score(y_test, test_predictions, average='weighted')
+s42 = precision_score(y_test, test_predictions, average='weighted')  
+
+print(f"Test Accuracy: {s12 * 100:.2f}%")  
+print(f"Test F1 Score: {s22 * 100:.2f}%")
+print(f"Test Recall: {s32 * 100:.2f}%")
+print(f"Test Precision: {s42 * 100:.2f}%")
+
+cm_test = confusion_matrix(y_test, test_predictions)  
+print("\nConfusion Matrix (Unseen Data):")
+print(cm_test)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - Test Data')
+plt.show()
+
+
+# 3- Calculate the metrics for all---------------------------------------------
+print("\n All Data Metrics")
+all_predictions = best_model.predict(x)
+
+s111 = accuracy_score(y, all_predictions)  
+s222 = f1_score(y, all_predictions, average='weighted')
+s333 = recall_score(y, all_predictions, average='weighted')
+s444 = precision_score(y, all_predictions, average='weighted')  
+print(f"Test Accuracy: {s111 * 100:.2f}%")  
+print(f"Test F1 Score: {s222 * 100:.2f}%")
+print(f"Test Recall: {s333 * 100:.2f}%")
+print(f"Test Precision: {s444 * 100:.2f}%")
+
+
+cm_all = confusion_matrix(y, all_predictions)  
+print("\nConfusion Matrix (Whole Data):")
+print(cm_all)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_all, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - All Data')
+plt.show()
+
+
+
+# Print the best model parameters
+print("\nBest parameters:")
+for param, value in grid_search.best_params_.items():
+    print(f"{param}: {value}")
+
+
+
+#%% 9.1) STFT Data Transformation
+
+# Beyond the STFT- Feature Extraction method, the Spectrogram images will be used as data.
+
+
+def eeg_stft_extraction2(x, fs=128):
+    
+    
+    _, __, z = stft(x, fs=fs, window='hann', nperseg=512, noverlap=128, nfft=1024)
+    
+    #down_z = np.abs(z[::2, ::2]) 
+    
+    a = np.abs(z)
+    return a
+
+
+example4 = eeg_stft_extraction2(signal)
+
+
+
+
+
+stft_data2 = np.zeros((84, 16, 513, 21)) # consider size of the matrix
+
+
+for iii in range(84):
+    for jjj in range(16):
+        stft_data2[iii, jjj, :, :] = eeg_stft_extraction2(dataset[iii, jjj, :])
+        
+
+
+plt.imshow(stft_data2[3,2,:,:]) # simple plot for verification
+
+
+#%% 9.2) STFT-CNN 
+
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, f1_score
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+
+# 1. Pytorch instead of Keras, is choosen for CUDA availability
+print("CUDA Availability:", torch.cuda.is_available())
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Computing Device: {device}")
+
+
+
+# 2. Hyperparameters___________________________________________________________
+lr = 0.0005
+batch_size = 5
+epochs = 250
+patience = 200  # Early stopping patience
+
+
+
+# 3. Labels
+label1 = np.zeros((39, 1))
+label2 = np.ones((45, 1))
+labels = np.vstack((label1, label2))  # not one-hot encoded
+
+
+# 4. train-test split
+train_data, test_data, train_labels, test_labels = train_test_split(
+    stft_data2, labels, test_size=0.2, random_state=42, stratify=labels)
+
+
+
+# 5. Transformation to PyTorch Tensors
+train_data = torch.tensor(train_data, dtype=torch.float32)
+train_labels = torch.tensor(train_labels.squeeze(), dtype=torch.long)
+test_data = torch.tensor(test_data, dtype=torch.float32)
+test_labels = torch.tensor(test_labels.squeeze(), dtype=torch.long)
+
+
+
+# 6. DataLoader
+train_dataset = TensorDataset(train_data, train_labels)
+test_dataset = TensorDataset(test_data, test_labels)
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+
+
+
+# 7. Model definition__________________________________________________________
+class EEGCNN(nn.Module):
+    def __init__(self):
+        super(EEGCNN, self).__init__()
+        self.conv1 = nn.Conv2d(16, 32, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(32)
+        self.af1 = nn.SiLU()
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.dropout1 = nn.Dropout(0.2)
+        
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.af2 = nn.SiLU()
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.dropout2 = nn.Dropout(0.2)
+        
+        self.fc1 = nn.Linear(64 * 128 * 5, 256) # consider input image size/4 (two maxpool)
+        self.af3 = nn.SiLU()
+        self.dropout3 = nn.Dropout(0.2) 
+        
+        self.fc2 = nn.Linear(256, 128)
+        self.af4 = nn.SiLU()
+        
+        self.fc3 = nn.Linear(128, 2) #output layer
+
+        
+        
+
+    def forward(self, x):
+        
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.af1(x)
+        x = self.pool1(x)
+        x = self.dropout1(x)
+        
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.af2(x)
+        x = self.pool2(x)
+        x = self.dropout2(x)
+
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = self.af3(x)
+        x = self.dropout3(x)
+       
+        x = self.fc2(x)
+        x = self.af4(x)
+        x = self.fc3(x)
+
+        return x
+
+model = EEGCNN().to(device)
+
+
+
+# 8. Loss and Optimizer________________________________________________________
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.001)
+
+
+
+# 9. Train and Evaluation loops with Early Stopping 
+train_losses = []
+test_losses = []
+train_accuracies = []
+test_accuracies = []
+
+best_test_accuracy = 0.0  # variables to control and save the best weights
+best_model_state = None  
+early_stopping_counter = 0
+
+
+for epoch in range(epochs):
+    # Training
+    model.train()
+    running_loss = 0.0
+    y_true_train = []
+    y_pred_train = []
+    
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        
+
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        y_true_train.extend(labels.cpu().numpy())
+        y_pred_train.extend(predicted.cpu().numpy())
+    
+    train_loss = running_loss / len(train_loader)
+    train_accuracy = accuracy_score(y_true_train, y_pred_train) * 100
+    train_losses.append(train_loss)
+    train_accuracies.append(train_accuracy)
+    
+    # Test
+    model.eval()
+    test_loss = 0.0
+    y_true_test = []
+    y_pred_test = []
+    
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            y_true_test.extend(labels.cpu().numpy())
+            y_pred_test.extend(predicted.cpu().numpy())
+    
+    test_loss = test_loss / len(test_loader)
+    test_accuracy = accuracy_score(y_true_test, y_pred_test) * 100
+    test_losses.append(test_loss)
+    test_accuracies.append(test_accuracy)
+    
+    # Check for Early Stopping
+    if test_accuracy > best_test_accuracy:
+        best_test_accuracy = test_accuracy
+        # copy of the model state
+        best_model_state = {key: value.cpu().clone() for key, value in model.state_dict().items()}
+        early_stopping_counter = 0
+    else:
+        early_stopping_counter += 1
+    
+    if early_stopping_counter >= patience:
+        print("Early stopping triggered.")
+        break
+    
+    print(f"Epoch {epoch+1}/{epochs}")
+    print(f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
+    print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
+
+
+# 10. Load the best model weights
+print("\nRestoring best model weights...")
+if best_model_state is not None:
+    # Move the best state back to the device and load it
+    best_model_state = {key: value.to(device) for key, value in best_model_state.items()}
+    model.load_state_dict(best_model_state)
+    print(f"Best model restored with test accuracy: {best_test_accuracy:.2f}%")
+
+
+# 11. Final evaluation
+model.eval()
+test_loss = 0.0
+y_true_test = []
+y_pred_test = []
+
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        test_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        y_true_test.extend(labels.cpu().numpy())
+        y_pred_test.extend(predicted.cpu().numpy())
+
+
+# 12. Calculate the  metrics
+accuracy = accuracy_score(y_true_test, y_pred_test)
+precision = precision_score(y_true_test, y_pred_test, average='weighted')
+f1 = f1_score(y_true_test, y_pred_test, average='weighted')
+
+print(f'Test Accuracy: {accuracy:.4f}')
+print(f'Test Precision: {precision:.4f}')
+print(f'Test F1 Score: {f1:.4f}')
+
+
+
+plt.figure(figsize=(14, 6))
+
+# Loss
+plt.subplot(1, 2, 1)
+plt.plot(train_losses, label='Train Loss')
+plt.plot(test_losses, label='Test Loss')
+plt.title('Loss Over Epochs')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+# Accuracy
+plt.subplot(1, 2, 2)
+plt.plot(train_accuracies, label='Train Accuracy')
+plt.plot(test_accuracies, label='Test Accuracy')
+plt.title('Accuracy Over Epochs')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy (%)')
+plt.legend()
+
+plt.show()
+
+# Confusion matrix
+cm = confusion_matrix(y_true_test, y_pred_test)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.show()
+
+
+
+
+#torch.save(model.state_dict(), 'eeg_cnn.pth')
+
+
+
+
+#%% 9.3) K-fold cross validation
+
+
+
+
+
+#%% 10.1) CWT Data Transformation
+
+
+# Similar to previous approach, Scalogram (CWT) images will be obtained from the original dataset, and will be used as CNN input
+
+import pywt
+
+wavelist = pywt.wavelist(kind='continuous') # The built-in CWT can only use limited number of wavelets.
+
+
+
+def eeg_cwt_extraction(x):
+    
+    fs=128
+    scales = np.geomspace(1, 60, 60) 
+    scale_frequencies = pywt.scale2frequency("cmor1.5-10",scales)*fs
+    
+    coefficients, frequencies = pywt.cwt(x, scales, 'cmor1.5-10', 1/fs) 
+    log_coeffs = np.log10(abs(coefficients) + 1)
+
+    
+    downsample = log_coeffs[:, ::4]  # consider the downsampled size
+    
+    return downsample
+
+
+example5 = eeg_cwt_extraction(signal)
+
+
+
+
+
+cwt_data = np.zeros((84, 16, 60, 1920 )) 
+
+
+for iii in range(84):
+    for jjj in range(16):
+        cwt_data[iii, jjj, :, :] = eeg_cwt_extraction(dataset[iii, jjj, :])
+        
+
+
+plt.imshow(cwt_data[3,2,:,:]) # simple plot for verification
+
+
+# np.save('array.npy', cwt_data)  Save the entire array to a binary file, to see the size of the resultant data
+
+
+#%% 10.2) CWT-CNN
+
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, f1_score
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+
+# 1. Pytorch instead of Keras, is choosen for CUDA availability
+print("CUDA Availability:", torch.cuda.is_available())
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Computing Device: {device}")
+
+
+
+# 2. Hyperparameters___________________________________________________________
+lr = 0.0001
+batch_size = 5
+epochs = 250
+patience = 200  # Early stopping patience
+
+
+
+# 3. Labels
+label1 = np.zeros((39, 1))
+label2 = np.ones((45, 1))
+labels = np.vstack((label1, label2))  # not one-hot encoded
+
+
+# 4. train-test split
+train_data, test_data, train_labels, test_labels = train_test_split(
+    cwt_data, labels, test_size=0.2, random_state=42, stratify=labels)
+
+
+
+# 5. Transformation to PyTorch Tensors
+train_data = torch.tensor(train_data, dtype=torch.float32)
+train_labels = torch.tensor(train_labels.squeeze(), dtype=torch.long)
+test_data = torch.tensor(test_data, dtype=torch.float32)
+test_labels = torch.tensor(test_labels.squeeze(), dtype=torch.long)
+
+
+
+# 6. DataLoader
+train_dataset = TensorDataset(train_data, train_labels)
+test_dataset = TensorDataset(test_data, test_labels)
+
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+
+
+
+# 7. Model definition__________________an AlexNet variant______________________
+class EEGCNN2(nn.Module):
+    def __init__(self):
+        super(EEGCNN2, self).__init__()
+        
+        # Input: [batch_size, 16, 60, 1920] -> Output: [batch_size, 96, 27, 478]
+        self.conv1 = nn.Conv2d(16, 96, kernel_size=(7,11), stride=(2,4))  
+        self.relu1 = nn.SiLU()
+        self.lrn1 = nn.BatchNorm2d(96)
+        self.pool1 = nn.MaxPool2d(kernel_size=3, stride=2)
+        
+        
+        # Input: [batch_size, 96, 13, 238] -> Output: [batch_size, 256, 6, 118]
+        self.conv2 = nn.Conv2d(96, 256, kernel_size=5, padding=2)
+        self.relu2 = nn.SiLU()
+        self.lrn2 = nn.BatchNorm2d(256)
+        self.pool2 = nn.MaxPool2d(kernel_size=3, stride=2)
+        
+        
+        # Input: [batch_size, 256, 6, 118] -> Output: [batch_size, 384, 6, 118]
+        self.conv3 = nn.Conv2d(256, 384, kernel_size=3, padding=1)
+        self.relu3 = nn.SiLU()
+        
+        
+        # Input: [batch_size, 384, 6, 118] -> Output: [batch_size, 384, 6, 118]
+        self.conv4 = nn.Conv2d(384, 384, kernel_size=3, padding=1)
+        self.relu4 = nn.SiLU()
+        
+        
+        # Input: [batch_size, 384, 6, 118] -> Output: [batch_size, 256, 2, 58]
+        self.conv5 = nn.Conv2d(384, 256, kernel_size=3, padding=1)
+        self.relu5 = nn.SiLU()
+        self.pool5 = nn.MaxPool2d(kernel_size=3, stride=2)
+        
+        # Flatten layer
+        self.flatten = nn.Flatten()  # Converts feature maps to vector: 256 * 2 * 58 = 29,696
+        
+        # Fully Connected Layers
+        self.fc1 = nn.Linear(256 * 2 * 58, 4096)
+        self.relu6 = nn.SiLU()
+        self.dropout1 = nn.Dropout(p=0.2)
+        
+        self.fc2 = nn.Linear(4096, 512)
+        self.relu7 = nn.SiLU()
+        self.dropout2 = nn.Dropout(p=0.1)
+        
+        self.fc3 = nn.Linear(512, 2)
+        
+
+    def forward(self, x):
+        
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.lrn1(x)
+        x = self.pool1(x)
+        
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.lrn2(x)
+        x = self.pool2(x)
+        
+        x = self.conv3(x)
+        x = self.relu3(x)
+        
+        x = self.conv4(x)
+        x = self.relu4(x)
+        
+        x = self.conv5(x)
+        x = self.relu5(x)
+        x = self.pool5(x)
+        
+        # Flatten and Fully Connected Layers
+        x = self.flatten(x)
+        
+        x = self.fc1(x)
+        x = self.relu6(x)
+        x = self.dropout1(x)
+        
+        x = self.fc2(x)
+        x = self.relu7(x)
+        x = self.dropout2(x)
+        
+        x = self.fc3(x)
+        
+        
+        return x
+
+model = EEGCNN2().to(device)
+
+
+
+# 8. Loss and Optimizer________________________________________________________
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0005)
+
+
+
+# 9. Train and Evaluation loops with Early Stopping 
+train_losses = []
+test_losses = []
+train_accuracies = []
+test_accuracies = []
+
+best_test_accuracy = 0.0  # variables to control and save the best weights
+best_model_state = None  
+early_stopping_counter = 0
+
+
+for epoch in range(epochs):
+    # Training
+    model.train()
+    running_loss = 0.0
+    y_true_train = []
+    y_pred_train = []
+    
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        
+
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        y_true_train.extend(labels.cpu().numpy())
+        y_pred_train.extend(predicted.cpu().numpy())
+    
+    train_loss = running_loss / len(train_loader)
+    train_accuracy = accuracy_score(y_true_train, y_pred_train) * 100
+    train_losses.append(train_loss)
+    train_accuracies.append(train_accuracy)
+    
+    # Test
+    model.eval()
+    test_loss = 0.0
+    y_true_test = []
+    y_pred_test = []
+    
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            y_true_test.extend(labels.cpu().numpy())
+            y_pred_test.extend(predicted.cpu().numpy())
+    
+    test_loss = test_loss / len(test_loader)
+    test_accuracy = accuracy_score(y_true_test, y_pred_test) * 100
+    test_losses.append(test_loss)
+    test_accuracies.append(test_accuracy)
+    
+    # Check for Early Stopping
+    if test_accuracy > best_test_accuracy:
+        best_test_accuracy = test_accuracy
+        # copy of the model state
+        best_model_state = {key: value.cpu().clone() for key, value in model.state_dict().items()}
+        early_stopping_counter = 0
+    else:
+        early_stopping_counter += 1
+    
+    if early_stopping_counter >= patience:
+        print("Early stopping triggered.")
+        break
+    
+    print(f"Epoch {epoch+1}/{epochs}")
+    print(f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%")
+    print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%")
+
+
+# 10. Load the best model weights
+print("\nRestoring best model weights...")
+if best_model_state is not None:
+    # Move the best state back to the device and load it
+    best_model_state = {key: value.to(device) for key, value in best_model_state.items()}
+    model.load_state_dict(best_model_state)
+    print(f"Best model restored with test accuracy: {best_test_accuracy:.2f}%")
+
+
+# 11. Final evaluation
+model.eval()
+test_loss = 0.0
+y_true_test = []
+y_pred_test = []
+
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        test_loss += loss.item()
+        _, predicted = torch.max(outputs, 1)
+        y_true_test.extend(labels.cpu().numpy())
+        y_pred_test.extend(predicted.cpu().numpy())
+
+
+# 12. Calculate the  metrics
+accuracy = accuracy_score(y_true_test, y_pred_test)
+precision = precision_score(y_true_test, y_pred_test, average='weighted')
+f1 = f1_score(y_true_test, y_pred_test, average='weighted')
+
+print(f'Test Accuracy: {accuracy:.4f}')
+print(f'Test Precision: {precision:.4f}')
+print(f'Test F1 Score: {f1:.4f}')
+
+
+
+plt.figure(figsize=(14, 6))
+
+# Loss
+plt.subplot(1, 2, 1)
+plt.plot(train_losses, label='Train Loss')
+plt.plot(test_losses, label='Test Loss')
+plt.title('Loss Over Epochs')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+
+# Accuracy
+plt.subplot(1, 2, 2)
+plt.plot(train_accuracies, label='Train Accuracy')
+plt.plot(test_accuracies, label='Test Accuracy')
+plt.title('Accuracy Over Epochs')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy (%)')
+plt.legend()
+
+plt.show()
+
+# Confusion matrix
+cm = confusion_matrix(y_true_test, y_pred_test)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.show()
+
+
+
+#torch.save(model.state_dict(), 'eeg_cwt_cnn.pth')
+
+#%% 10.3) CNN K-Fold CV 
+
+
+# PyTorch K-fold cross-validation implementation, by maintaining fold independence and best weight restoration.
+
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, f1_score, recall_score
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# 1. CUDA check
+print("CUDA Availability:", torch.cuda.is_available())
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Computing Device: {device}")
+
+# 2. Hyperparameters
+lr = 0.0001
+batch_size = 5
+epochs = 250
+patience = 200
+
+# 3. Labels
+label1 = np.zeros((39, 1))
+label2 = np.ones((45, 1))
+labels = np.vstack((label1, label2))
+
+# 4. Initial train-test split
+train_data, test_data, train_labels, test_labels = train_test_split(
+    cwt_data, labels, test_size=0.2, random_state=42, stratify=labels)
+
+# 5. Transform to PyTorch tensors
+train_data = torch.tensor(train_data, dtype=torch.float32)
+train_labels = torch.tensor(train_labels.squeeze(), dtype=torch.long)
+test_data = torch.tensor(test_data, dtype=torch.float32)
+test_labels = torch.tensor(test_labels.squeeze(), dtype=torch.long)
+
+# 6. K-Fold Cross Validation setup
+k = 10
+kf = KFold(n_splits=k, shuffle=False)
+
+fold_number = 1
+all_training_predictions = []
+all_training_labels = []
+accuracies = []
+
+# 7. K-Fold Cross Validation loop
+for train_idx, val_idx in kf.split(train_data):
+    print(f'Fold {fold_number}')
+    
+    # Split fold data
+    x_fold_train = train_data[train_idx]
+    y_fold_train = train_labels[train_idx]
+    x_fold_val = train_data[val_idx]
+    y_fold_val = train_labels[val_idx]
+    
+    # Create DataLoaders for this fold
+    fold_train_dataset = TensorDataset(x_fold_train, y_fold_train)
+    fold_val_dataset = TensorDataset(x_fold_val, y_fold_val)
+    fold_train_loader = DataLoader(fold_train_dataset, batch_size=batch_size, shuffle=True)
+    fold_val_loader = DataLoader(fold_val_dataset, batch_size=batch_size, shuffle=False)
+    
+    # Initialize model, criterion, and optimizer
+    model = EEGCNN2().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0005)
+    
+    # Training variables
+    best_val_accuracy = 0.0
+    best_model_state = None
+    early_stopping_counter = 0
+    
+    # Training loop
+    for epoch in range(epochs):
+        # Training phase
+        model.train()
+        for inputs, labels in fold_train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        
+        # Validation phase
+        model.eval()
+        val_predictions = []
+        val_true_labels = []
+        with torch.no_grad():
+            for inputs, labels in fold_val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                _, predicted = torch.max(outputs, 1)
+                val_predictions.extend(predicted.cpu().numpy())
+                val_true_labels.extend(labels.cpu().numpy())
+        
+        # Calculate validation accuracy
+        val_accuracy = accuracy_score(val_true_labels, val_predictions)
+        
+        # Early stopping check
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            best_model_state = {key: value.cpu().clone() for key, value in model.state_dict().items()}
+            early_stopping_counter = 0
+        else:
+            early_stopping_counter += 1
+        
+        if early_stopping_counter >= patience:
+            print("Early stopping triggered")
+            break
+    
+    # Load best model for this fold
+    best_model_state = {key: value.to(device) for key, value in best_model_state.items()}
+    model.load_state_dict(best_model_state)
+    
+    # Final fold evaluation
+    model.eval()
+    fold_predictions = []
+    fold_true_labels = []
+    with torch.no_grad():
+        for inputs, labels in fold_val_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            fold_predictions.extend(predicted.cpu().numpy())
+            fold_true_labels.extend(labels.cpu().numpy())
+    
+    # Store metrics
+    fold_accuracy = accuracy_score(fold_true_labels, fold_predictions)
+    accuracies.append(fold_accuracy)
+    all_training_predictions.extend(fold_predictions)
+    all_training_labels.extend(fold_true_labels)
+    
+    fold_number += 1
+
+# 8. Report cross-validation results
+mean_accuracy = np.mean(accuracies)
+std_accuracy = np.std(accuracies)
+print(f'Cross-Validation Mean Accuracy: {mean_accuracy*100:.3f}%')
+print(f'Standard Deviation of Accuracy: {std_accuracy*100:.3f}%')
+
+# 9. Plot cross-validation confusion matrix
+cm_cv = confusion_matrix(all_training_labels, all_training_predictions)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_cv, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - Cross-Validation on Training')
+plt.show()
+
+# 10. Final model training on entire training set
+final_model = EEGCNN2().to(device)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(final_model.parameters(), lr=lr, weight_decay=0.0005)
+
+# Create DataLoaders for final training
+train_dataset = TensorDataset(train_data, train_labels)
+test_dataset = TensorDataset(test_data, test_labels)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+# Training variables for final model
+best_test_accuracy = 0.0
+best_final_model_state = None
+early_stopping_counter = 0
+
+# Final training loop
+for epoch in range(epochs):
+    final_model.train()
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = final_model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+    
+    # Validation on test set
+    final_model.eval()
+    test_predictions = []
+    test_true_labels = []
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = final_model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            test_predictions.extend(predicted.cpu().numpy())
+            test_true_labels.extend(labels.cpu().numpy())
+    
+    test_accuracy = accuracy_score(test_true_labels, test_predictions)
+    
+    if test_accuracy > best_test_accuracy:
+        best_test_accuracy = test_accuracy
+        best_final_model_state = {key: value.cpu().clone() for key, value in final_model.state_dict().items()}
+        early_stopping_counter = 0
+    else:
+        early_stopping_counter += 1
+    
+    if early_stopping_counter >= patience:
+        print("Early stopping triggered in final training")
+        break
+
+# Load best final model
+best_final_model_state = {key: value.to(device) for key, value in best_final_model_state.items()}
+final_model.load_state_dict(best_final_model_state)
+
+# Final evaluation
+final_model.eval()
+final_predictions = []
+final_true_labels = []
+with torch.no_grad():
+    for inputs, labels in test_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        outputs = final_model(inputs)
+        _, predicted = torch.max(outputs, 1)
+        final_predictions.extend(predicted.cpu().numpy())
+        final_true_labels.extend(labels.cpu().numpy())
+
+# Calculate final metrics
+final_accuracy = accuracy_score(final_true_labels, final_predictions)
+final_precision = precision_score(final_true_labels, final_predictions, average='weighted')
+final_recall = recall_score(final_true_labels, final_predictions, average='weighted')
+final_f1 = f1_score(final_true_labels, final_predictions, average='weighted')
+
+print(f'Final Test Accuracy: {final_accuracy*100:.3f}%')
+print(f"F1 Score: {final_f1*100:.2f}%")
+print(f"Recall: {final_recall*100:.2f}%")
+print(f"Precision: {final_precision*100:.2f}%")
+
+# Plot final confusion matrix
+cm_test = confusion_matrix(final_true_labels, final_predictions)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - Test Data')
+plt.show()
 
