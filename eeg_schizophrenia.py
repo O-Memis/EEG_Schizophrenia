@@ -206,10 +206,10 @@ plt.show()
 wavelist = pywt.wavelist(kind='continuous') # The built-in CWT can only use limited number of wavelets.
 
 scales = np.geomspace(1, 60, 60)  # change according to verification of scale frequenices
-scale_frequencies = pywt.scale2frequency("morl",scales)*fs  # always verify it to represent accurate frequency resolution
+scale_frequencies = pywt.scale2frequency("cmor1.5-10",scales)*fs  # always verify it to represent accurate frequency resolution
 
 # Difference than spectrogram, comes from these uneven distribution of wavelet frequencies.
-coefficients, frequencies = pywt.cwt(signal, scales, 'morl', 1/fs) 
+coefficients, frequencies = pywt.cwt(signal, scales, 'cmor1.5-10', 1/fs) 
 log_coeffs = np.log10(abs(coefficients) + 1)  # prevent log(0)
 
 
@@ -324,28 +324,28 @@ plt.show()
 
 
 #4.2) Scalogram 
-scales = np.geomspace(1, 60, 60)  
-scale_frequencies = pywt.scale2frequency("morl",scales)*fs  
+scales2 = np.geomspace(1, 60, 60)  
+scale_frequencies2 = pywt.scale2frequency("cmor1.5-10",scales2)*fs  
 
-coefficients, frequencies = pywt.cwt(signal, scales, 'morl', 1/fs) 
-log_coeffs = np.log10(abs(coefficients) + 1)  # prevent log(0)
+coefficients2, frequencies2 = pywt.cwt(signal, scales2, 'cmor1.5-10', 1/fs) 
+log_coeffs2 = np.log10(abs(coefficients2) + 1)  # prevent log(0)
 
 
 plt.figure(figsize=(13, 8))
 f_min = 0
 f_max = fs/2
-plt.imshow(log_coeffs, extent=[0, len(signal)/fs, f_min, f_max], 
+plt.imshow(log_coeffs2, extent=[0, len(signal)/fs, f_min, f_max], 
            aspect='auto', cmap='viridis', interpolation='bilinear' ) 
 
 cbar = plt.colorbar()
 cbar.set_label('Log10(Magnitude + 1)')
 
 
-y_axis_labels =   list(map(int, np.flip(frequencies)))             
+y_axis_labels2 =   list(map(int, np.flip(frequencies2)))             
 step = 10                                                
 plt.yticks(
-    ticks=np.arange(0, len(y_axis_labels), step),  
-    labels=y_axis_labels[::step]                         
+    ticks=np.arange(0, len(y_axis_labels2), step),  
+    labels=y_axis_labels2[::step]                         
 )
 
 plt.ylabel('Frequency (Hz)')
@@ -2195,10 +2195,6 @@ plt.show()
 
 
 
-#%% 9.3) K-fold cross validation
-
-
-
 
 
 #%% 10.1) CWT Data Transformation
@@ -2798,4 +2794,146 @@ plt.xlabel('Predicted label')
 plt.ylabel('True label')
 plt.title('Confusion Matrix - Test Data')
 plt.show()
+
+
+#%% 10.4) CNN - LOOCV
+
+
+"""
+Leave-One-Out Cross-Validation (LOOCV) is a technique to assess the model performance on limited numbers of data.
+It is a specific case of k-fold cross-validation where the number of folds equals the number of data points in the dataset.
+It applies for small datasets, because it is computationally intensive
+"""
+
+
+from sklearn.model_selection import LeaveOneOut
+
+
+
+
+# 1. CUDA check
+print("CUDA Availability:", torch.cuda.is_available())
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Computing Device: {device}")
+
+# 2. Hyperparameters
+lr = 0.0001
+batch_size = 5
+epochs = 120
+patience = 90
+
+# 3. Data preparation
+x = torch.tensor(cwt_data, dtype=torch.float32)
+label1 = np.zeros((39, 1))
+label2 = np.ones((45, 1))
+labels = np.vstack((label1, label2))
+y = torch.tensor(labels.squeeze(), dtype=torch.long)
+
+# 4. LOOCV setup
+loo = LeaveOneOut()
+accuracies = []
+all_predictions = []
+all_true_labels = []
+fold_count = 1
+total_folds = len(x)
+
+# 5. LOOCV loop
+for train_idx, test_idx in loo.split(x):
+    print(f'Fold {fold_count}/{total_folds}')
+    
+    # Split data
+    x_train, x_test = x[train_idx], x[test_idx]
+    y_train, y_test = y[train_idx], y[test_idx]
+    
+    # Create DataLoaders
+    train_dataset = TensorDataset(x_train, y_train)
+    test_dataset = TensorDataset(x_test, y_test)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    
+    # Initialize model, criterion, and optimizer
+    model = EEGCNN2().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0.0005)
+    
+    # Training variables
+    best_val_accuracy = 0.0
+    best_model_state = None
+    early_stopping_counter = 0
+    
+    # Training loop
+    for epoch in range(epochs):
+        model.train()
+        for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+        
+        # Validation
+        model.eval()
+        with torch.no_grad():
+            for inputs, labels in test_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                _, predicted = torch.max(outputs, 1)
+                val_accuracy = (predicted == labels).float().mean().item()
+        
+        # Early stopping
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            best_model_state = {key: value.cpu().clone() for key, value in model.state_dict().items()}
+            early_stopping_counter = 0
+        else:
+            early_stopping_counter += 1
+        
+        if early_stopping_counter >= patience:
+            print(f"Early stopping triggered at epoch {epoch}")
+            break
+    
+    # Load best model
+    best_model_state = {key: value.to(device) for key, value in best_model_state.items()}
+    model.load_state_dict(best_model_state)
+    
+    # Final evaluation for this fold
+    model.eval()
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            _, predicted = torch.max(outputs, 1)
+            all_predictions.extend(predicted.cpu().numpy())
+            all_true_labels.extend(labels.cpu().numpy())
+            accuracies.append((predicted == labels).float().mean().item())
+    
+    fold_count += 1
+
+# 6. Calculate and display final metrics
+mean_accuracy = np.mean(accuracies)
+std_accuracy = np.std(accuracies)
+print(f'LOOCV Mean Accuracy: {mean_accuracy*100:.3f}%')
+print(f'Standard Deviation: {std_accuracy*100:.3f}%')
+
+# Confusion Matrix
+cm = confusion_matrix(all_true_labels, all_predictions)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.xlabel('Predicted label')
+plt.ylabel('True label')
+plt.title('Confusion Matrix - LOOCV')
+plt.show()
+
+# Additional metrics
+final_accuracy = accuracy_score(all_true_labels, all_predictions)
+final_precision = precision_score(all_true_labels, all_predictions, average='weighted')
+final_recall = recall_score(all_true_labels, all_predictions, average='weighted')
+final_f1 = f1_score(all_true_labels, all_predictions, average='weighted')
+
+print(f'Final LOOCV Accuracy: {final_accuracy*100:.3f}%')
+print(f"F1 Score: {final_f1*100:.2f}%")
+print(f"Recall: {final_recall*100:.2f}%")
+print(f"Precision: {final_precision*100:.2f}%")
+
 
