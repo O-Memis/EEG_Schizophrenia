@@ -43,9 +43,9 @@ EEG Dataset which contains 2 classes of EEG signals captured from adolescents.
 <br>    
     Signals are vertically placed into text files, ordered by channel number (1 to 16).
 <br>    
-    The length of 1 signal is = 128*60 = 7680 samples.
+    The length of 1 signal is = 128 x 60 = 7680 samples.
 <br>
-    So each text file contains  16*7680 = 122880 samples, vertically.
+    So each text file contains  16 x 7680 = 122880 samples, vertically.
 
 <br><br>
 Source of the dataset: [Moscow State University 2005](http://brain.bio.msu.ru/eeg_schizophrenia.htm) 
@@ -109,21 +109,21 @@ Before running the classification models, consider related data transformation/f
 and the input size (for the Deep Learning models). 
 <br><br>
 The DWT-Feature extraction method gives an output dataset in size of (84,16,25)
-then the data of every subject are flattened into 16*25=400
+then the data of every subject are flattened into 16 x 25=400
 <br><br>
 Use different wavelets for SVM and the MLP models. Such as 'bior2.8' and 'bior3.3' for the SVM
 <br><br>
 The first STFT-Feature extraction method gives an output dataset in size of (84,16,325)
 It uses a downsampled and flattened STFT.
-Then the data of every subject are flattened into 16*325=5200
+Then the data of every subject are flattened into 16 x 325=5200
 <br><br>
 In the second STFT method, Spectrograms of the signals are not flattened, and 
 dataset in size of  (84, 16, 513, 21) is obtained. 
-The CNN model takes the input as 16 channel 513*21 matrices.
+The CNN model takes the input as 16 channel 513x21 matrices.
 <br><br>
 In the last CWT method, Scalograms (downsampled in one axis) of the signals are captured 
 into the resultant dataset which has a size of (84, 16, 60, 1920).
-The CNN model takes the input as 16 channel 60*1920 matrices.
+The CNN model takes the input as 16 channel 60x1920 matrices.
 <br><br>
 All the MLP models are built by using Keras, 
 and all the CNN models are built by using PyTorch (uses GPU) 
