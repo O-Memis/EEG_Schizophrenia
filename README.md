@@ -1,9 +1,9 @@
 # EEG_Schizophrenia
  Binary classification (Schizophrenia / Normal) of the adolescent EEG signals, obtained from an open-access dataset.
- <br>
+ <br><br>
  In this project, various Time and Frequency feature extraction methods (DWT, STFT and CWT) are applied to the EEG signals, in order to obtain better classification performance. The result of %94 test accuracy is obtained by the DWT-MLP method which uses spectral features, and by the CWT-CNN method. 
 
- <br>
+ <br><br>
  Oguzhan Memis  January 2025
 
 <br><br>
@@ -27,25 +27,25 @@ There is also a model file called **"dwt_mlp_model_96.h5"** to import and use fo
 ## 2-Dataset Description
 
 EEG Dataset which contains 2 classes of EEG signals captured from adolescents.
-<br>
+<br><br>
 -Classes: Normal (39 people) and Schizophrenia (45 people).
-<br>
+<br><br>
 -Properties:
 <br>   
-    *16 channels * 128 sample-per-second * 60 seconds of measurement for each person.
+    16 channels * 128 sample-per-second * 60 seconds of measurement for each person.
 <br>  
-    *Voltages are captured in units of microvolts (µV) 10^-6
+    Voltages are captured in units of microvolts (µV) 10^-6
 <br>
-    *So the amplitudes of the signals varies from -2000 to +2000
+    So the amplitudes of the signals varies from -2000 to +2000
 <br><br>
 
 -Orientation:
 <br>    
-    *Signals are vertically placed into text files, ordered by channel number (1 to 16).
+    Signals are vertically placed into text files, ordered by channel number (1 to 16).
 <br>    
-    *The length of 1 signal is = 128*60 = 7680 samples.
+    The length of 1 signal is = 128*60 = 7680 samples.
 <br>
-    *So each text file contains  16*7680 = 122880 samples, vertically.
+    So each text file contains  16*7680 = 122880 samples, vertically.
 
 <br><br>
 Source of the dataset: [Moscow State University 2005](http://brain.bio.msu.ru/eeg_schizophrenia.htm) 
@@ -62,7 +62,7 @@ A recent article that uses this dataset: [2024 Bagherzadeh & Shalbaf](https://do
 
 
 The codes are divided into separate cells by putting #%%,
-<br>
+<br><br>
 RUN EACH CELL ONE BY ONE CONSECUTIVELY.
     <br>
     
@@ -105,28 +105,28 @@ RUN EACH CELL ONE BY ONE CONSECUTIVELY.
     
 ## 4-Considerations:
 
-*Before running the classification models, consider related data transformation/feature extraction methods
- and the input size (for the Deep Learning models). 
-<br>
-*The DWT-Feature extraction method gives an output dataset in size of (84,16,25)
- then the data of every subject are flattened into 16*25=400
- <br>
-*Use different wavelets for SVM and the MLP models. Such as 'bior2.8' and 'bior3.3' for the SVM
- <br>
-*The first STFT-Feature extraction method gives an output dataset in size of (84,16,325)
- It uses a downsampled and flattened STFT.
- Then the data of every subject are flattened into 16*325=5200
-<br>
-*In the second STFT method, Spectrograms of the signals are not flattened, and 
- dataset in size of  (84, 16, 513, 21) is obtained. 
- The CNN model takes the input as 16 channel 513*21 matrices.
-<br>
-*In the last CWT method, Scalograms (downsampled in one axis) of the signals are captured 
- into the resultant dataset which has a size of (84, 16, 60, 1920).
- The CNN model takes the input as 16 channel 60*1920 matrices.
-<br>
-*All the MLP models are built by using Keras, 
- and all the CNN models are built by using PyTorch (uses GPU) 
+Before running the classification models, consider related data transformation/feature extraction methods
+and the input size (for the Deep Learning models). 
+<br><br>
+The DWT-Feature extraction method gives an output dataset in size of (84,16,25)
+then the data of every subject are flattened into 16*25=400
+<br><br>
+Use different wavelets for SVM and the MLP models. Such as 'bior2.8' and 'bior3.3' for the SVM
+<br><br>
+The first STFT-Feature extraction method gives an output dataset in size of (84,16,325)
+It uses a downsampled and flattened STFT.
+Then the data of every subject are flattened into 16*325=5200
+<br><br>
+In the second STFT method, Spectrograms of the signals are not flattened, and 
+dataset in size of  (84, 16, 513, 21) is obtained. 
+The CNN model takes the input as 16 channel 513*21 matrices.
+<br><br>
+In the last CWT method, Scalograms (downsampled in one axis) of the signals are captured 
+into the resultant dataset which has a size of (84, 16, 60, 1920).
+The CNN model takes the input as 16 channel 60*1920 matrices.
+<br><br>
+All the MLP models are built by using Keras, 
+and all the CNN models are built by using PyTorch (uses GPU) 
 
 <br><br><br>
 
