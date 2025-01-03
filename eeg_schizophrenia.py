@@ -7,31 +7,33 @@ Oguzhan Memis  January 2025
 
 
 
-DATASET DESCRIPTION:
-__________________________________________________
+1-DATASET DESCRIPTION:
+-------------------------------------------------------------------------------
     
 EEG Dataset which contains 2 classes of EEG signals captured from adolescents.
 
 -Classes: Normal (39 people) and Schizophrenia (45 people).
 
--Properties:
+-Properties of the EEG data:
     
-    16 channels * 128 sample-per-second * 60 seconds of measurement for each person.
+    *16 channels * 128 sample-per-second * 60 seconds of measurement for each person.
     
-    Voltages are captured in units of microvolts (µV) 10^-6
-
-
-
--Orientation:
+    *Voltages are captured in units of microvolts (µV) 10^-6
     
-    Signals are vertically placed into text files, ordered by channel number (1 to 16).
+    *So the amplitudes of the signals varies from -2000 to +2000
+
+
+
+-Orientation of the data in files:
     
-    Length of 1 signal is = 128*60 = 7680 samples.
+    *Signals are vertically placed into text files, ordered by channel number (1 to 16).
+    
+    *Length of 1 signal is = 128*60 = 7680 samples.
 
-    So each text file contains  16*7680 = 122880 samples , vertically.
+    *So each text file contains  16*7680 = 122880 samples , vertically.
 
 
-SOURCE:
+SOURCE OF THE DATASET:
 
 http://brain.bio.msu.ru/eeg_schizophrenia.htm 
 
@@ -42,8 +44,75 @@ A recent article which uses this dataset: https://doi.org/10.1007/s11571-024-101
 
 
 
-THE CODE IS DIVIDED INTO SEPARATE CELLS, RUN EACH CELL ONE BY ONE CONSECUTIVELY
+2-CODE ORGANIZATION:
+-------------------------------------------------------------------------------
 
+The codes are divided into separate cells by putting #%%,
+
+RUN EACH CELL ONE BY ONE CONSECUTIVELY.
+    
+    
+    The cells are as follows:
+        
+        1) Importing the data
+        2) Filtering stage (includes time and frequency plots)
+        3:
+            3.1) Visualization of all the healthy EEG channels together
+            3.2) Visualization of all the patient EEG channels together
+            
+        4) Feature Examinations (including many statistical features on the signals)
+        5) Further explorations: Correlation matrix, and Recurrence plot
+        6) Multi-level Decomposition by DWT (examination)
+        7:
+            7.1) DWT Feature Extraction and Data Transformation
+            7.2) SVM Grid-search
+            7.3) SVM cross-validation
+            7.4) MLP model
+            7.5) Optional part: save the best model
+            7.6) MLP k-fold cross-validation
+            7.7) Leave One Out CV on the MLP
+        
+        8:
+            8.1) STFT-Feature extraction method
+            8.2) STFT-MLP
+            8.3) STFT-SVM (Grid-search)
+            
+        9:
+            9.1) STFT Data Transformation
+            9.2) STFT - CNN
+            
+        10:
+            10.1) CWT Data Transformation
+            10.2) CWT - CNN
+            10.3) CNN k-fold cross-validation
+            10.4) Leave One Out CV on the CNN
+
+
+    
+3-CONSIDERATIONS:
+-------------------------------------------------------------------------------
+*Before running the classification models, consider related data transformation/feature extraction methods
+ and the input size (for the Deep Learning models). 
+
+*The DWT-Feature extraction method gives an output dataset in size of (84,16,25)
+ then the data of every subject are flattened into 16*25=400
+ 
+*Use different wavelets for SVM and the MLP models. Such as 'bior2.8' and 'bior3.3' for the SVM
+ 
+*The first STFT-Feature extraction method gives an output dataset in size of (84,16,325)
+ It uses a downsampled and flattened STFT.
+ Then the data of every subject are flattened into 16*325=5200
+
+*In the second STFT method, Spectrograms of the signals are not flattened, and 
+ dataset in size of  (84, 16, 513, 21) is obtained. 
+ The CNN model takes the input as 16 channel 513*21 matrices.
+
+*In the last CWT method, Scalograms (downsampled in one axis) of the signals are captured 
+ into the resultant dataset which has a size of (84, 16, 60, 1920).
+ The CNN model takes the input as 16 channel 60*1920 matrices.
+
+*All the MLP models are built by using Keras, 
+ and all the CNN models are built by using PyTorch (uses GPU) 
 """
 
 
@@ -56,13 +125,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
+# Read the files in corresponding folders
 path1 = "./normal"
 path2 = "./schizophren"
 
 
 
 normals = np.zeros((39,122880))  # Preparing an empty matrix for collecting all the data of normal category.     
+
 i=0
 
 
@@ -608,7 +678,7 @@ plt.show()
 
 
 
-#%% 5) EDA: Connectivity related plots
+#%% 5) Further explorations: Connectivity related plots
 
 
 import seaborn as sns
@@ -1193,7 +1263,7 @@ plt.show()
 
 
 
-#%%  Optional: Save and reuse the best model
+#%% 7.5)  Optional: Save and reuse the best model
 
 #model6.save('dwt_mlp_model_96.h5')
 
@@ -1235,7 +1305,7 @@ plt.show()
 
 
 
-#%% 7.5) MLP K-Fold CV 
+#%% 7.6) MLP K-Fold CV 
 
 """
 In k-fold cross-validation, the goal is to evaluate the performance of a model 
@@ -1386,7 +1456,7 @@ plt.show()
 
 
 
-#%% 7.6) Leave One Out CV 
+#%% 7.7) Leave One Out CV on MLP
 
 
 
@@ -1503,7 +1573,7 @@ def eeg_stft_extraction(x, fs=128):
     
     _, __, z = stft(x, fs=fs, window='hann', nperseg=512, noverlap=64, nfft=512)
     
-    down_z = np.abs(z[::4, ::4]) # downsampling by factor of 4
+    down_z = np.abs(z[::4, ::4]) # downsampling by factor of 2
     
     flat = down_z.flatten() # extra: flattening
     return flat
@@ -1756,132 +1826,6 @@ for param, value in grid_search.best_params_.items():
     print(f"{param}: {value}")
 
 
-#%% 8.4) STFT-LogR
-
-from sklearn.linear_model import LogisticRegressionCV
-from sklearn.preprocessing import minmax_scale , StandardScaler
-from sklearn.metrics import accuracy_score , f1_score , recall_score, precision_score , confusion_matrix
-from sklearn.model_selection import GridSearchCV
-
-
-
-# Matrices are flattened to a 1D vector 
-x = stft_data1.reshape(84, -1)  
-
-
-y = np.array([0] * 39 + [1] * 45)  # Binary labels
-
-
-
-x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42, stratify=y)
-
-
-"""
-# Standard Normalization
-scale = StandardScaler()
-scale.fit(x_train) # Adapting to just training set
-x_train = scale.transform(x_train) # Transform
-x_test = scale.transform(x_test) 
-"""
-
-
-mymodel = LogisticRegressionCV()
-
-
-
-# Define the parameter grid
-param_grid = {
-    'solver': ['newton-cg'],
-    'penalty': ['l2'],
-    'multi_class': ['ovr', 'multinomial'],
-    'Cs': [0.1,1, 5, 10, 50, 100 ],
-    'max_iter': [80, 100, 200, 500, 1000],
-    'class_weight': [None, 'balanced'],
-    'tol': [1e-4, 1e-3, 1e-5],
-}
-
-
-grid_search = GridSearchCV(mymodel, param_grid, cv=5, n_jobs=-1, verbose=0, scoring='accuracy')
-# Setting n_jobs to -1 means that the algorithm will use all available CPU cores on your machine
-# Verbose setting is for observing the details of the ongoing process 
-
-grid_search.fit(x_train, y_train)
-
-
-
-# Getting the best model
-best_model = grid_search.best_estimator_
-
-
-
-
-# 1- Calculate k-fold CV metrics with train data-------------------------------
-
-print("\nDetailed results for best parameters:")
-print(f"Mean CV Score: {grid_search.cv_results_['mean_test_score'][grid_search.best_index_] * 100:.2f}%")
-print(f"Standard Deviation: {grid_search.cv_results_['std_test_score'][grid_search.best_index_] * 100:.2f}%")
-
-
-
-
-# 2- Calculate the metrics for test data---------------------------------------
-print("\nTest Data Metrics")
-test_predictions = best_model.predict(x_test)
-
-s12 = accuracy_score(y_test, test_predictions)  
-s22 = f1_score(y_test, test_predictions, average='weighted')
-s32 = recall_score(y_test, test_predictions, average='weighted')
-s42 = precision_score(y_test, test_predictions, average='weighted')  
-
-print(f"Test Accuracy: {s12 * 100:.2f}%")  
-print(f"Test F1 Score: {s22 * 100:.2f}%")
-print(f"Test Recall: {s32 * 100:.2f}%")
-print(f"Test Precision: {s42 * 100:.2f}%")
-
-cm_test = confusion_matrix(y_test, test_predictions)  
-print("\nConfusion Matrix (Unseen Data):")
-print(cm_test)
-
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm_test, annot=True, fmt='d', cmap='Blues')
-plt.xlabel('Predicted label')
-plt.ylabel('True label')
-plt.title('Confusion Matrix - Test Data')
-plt.show()
-
-
-# 3- Calculate the metrics for all---------------------------------------------
-print("\n All Data Metrics")
-all_predictions = best_model.predict(x)
-
-s111 = accuracy_score(y, all_predictions)  
-s222 = f1_score(y, all_predictions, average='weighted')
-s333 = recall_score(y, all_predictions, average='weighted')
-s444 = precision_score(y, all_predictions, average='weighted')  
-print(f"Test Accuracy: {s111 * 100:.2f}%")  
-print(f"Test F1 Score: {s222 * 100:.2f}%")
-print(f"Test Recall: {s333 * 100:.2f}%")
-print(f"Test Precision: {s444 * 100:.2f}%")
-
-
-cm_all = confusion_matrix(y, all_predictions)  
-print("\nConfusion Matrix (Whole Data):")
-print(cm_all)
-
-plt.figure(figsize=(8, 6))
-sns.heatmap(cm_all, annot=True, fmt='d', cmap='Blues')
-plt.xlabel('Predicted label')
-plt.ylabel('True label')
-plt.title('Confusion Matrix - All Data')
-plt.show()
-
-
-
-# Print the best model parameters
-print("\nBest parameters:")
-for param, value in grid_search.best_params_.items():
-    print(f"{param}: {value}")
-
 
 
 #%% 9.1) STFT Data Transformation
@@ -1894,7 +1838,7 @@ def eeg_stft_extraction2(x, fs=128):
     
     _, __, z = stft(x, fs=fs, window='hann', nperseg=512, noverlap=128, nfft=1024)
     
-    #down_z = np.abs(z[::2, ::2]) 
+    #down_z = np.abs(z[::2, ::2]) downsampling is removed
     
     a = np.abs(z)
     return a
