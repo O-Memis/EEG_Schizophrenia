@@ -782,7 +782,7 @@ plt.show()
 
 
 
-A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal2, 'db19', level=5)  # Perform wavelet decomposition
+A5, D5, D4, D3, D2, D1 = pywt.wavedec(signal1, 'db19', level=5)  # Perform wavelet decomposition
 
 
 """
@@ -868,9 +868,9 @@ dataset = np.concatenate((filtered_normal, filtered_patient))
 
 #1) Extract statistical features from DWT decomposition coefficients
 
-def extract_dwt_features(signal):
+def extract_dwt_features(x):
    
-    dwt = pywt.wavedec(signal, 'db19', level=5)
+    dwt = pywt.wavedec(x, 'db19', level=5)
     A5, D5, D4, D3, D2, D1 = dwt
     
     
